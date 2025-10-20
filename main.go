@@ -840,6 +840,7 @@ func handleUpload(c *gin.Context) {
 
 	src, err := fh.Open()
 	if err != nil {
+		log.Printf("upload error open src id=%s name=%s err=%v", upID, filename, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -847,18 +848,22 @@ func handleUpload(c *gin.Context) {
 
 	out, err := os.Create(dest)
 	if err != nil {
+		log.Printf("upload error create dest id=%s name=%s err=%v", upID, filename, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	defer out.Close()
 
+	log.Printf("upload start id=%s name=%s size=%d content_length=%s", upID, filename, fh.Size, c.Request.Header.Get("Content-Length"))
 	var copied int64
 	total := fh.Size
+	lastPctLogged := -1
 	buf := make([]byte, 1024*256) // 256KB
 	for {
 		n, rerr := src.Read(buf)
 		if n > 0 {
 			if _, werr := out.Write(buf[:n]); werr != nil {
+				log.Printf("upload error write id=%s name=%s err=%v", upID, filename, werr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": werr.Error()})
 				return
 			}
@@ -868,25 +873,31 @@ func handleUpload(c *gin.Context) {
 				if pct < 1 { pct = 1 }
 				if pct > 99 { pct = 99 }
 				upSetPercent(upID, pct)
+				if pct != lastPctLogged && (pct%5 == 0 || pct == 1 || pct == 99) {
+					log.Printf("upload progress id=%s name=%s copied=%d/%d pct=%d", upID, filename, copied, total, pct)
+					lastPctLogged = pct
+				}
 			}
 		}
 		if rerr == io.EOF {
+			log.Printf("upload complete id=%s name=%s size=%d", upID, filename, copied)
 			break
 		}
 		if rerr != nil {
+			log.Printf("upload error read id=%s name=%s err=%v", upID, filename, rerr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": rerr.Error()})
 			return
 		}
 	}
 
-    // build URL for DB: prefer PUBLIC_BASE_URL; if empty, store relative path
-    base := publicBase()
-    var url string
-    if base == "" {
-        url = "/uploads/" + filename
-    } else {
-        url = fmt.Sprintf("%s/uploads/%s", strings.TrimRight(base, "/"), filename)
-    }
+	// build URL for DB: prefer PUBLIC_BASE_URL; if empty, store relative path
+	base := publicBase()
+	var url string
+	if base == "" {
+		url = "/uploads/" + filename
+	} else {
+		url = fmt.Sprintf("%s/uploads/%s", strings.TrimRight(base, "/"), filename)
+	}
 	upSetPercent(upID, 100)
 	c.JSON(http.StatusOK, gin.H{"url": url, "upload_id": upID})
 }
