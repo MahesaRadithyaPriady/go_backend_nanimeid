@@ -526,7 +526,17 @@ func main() {
 	r.HEAD("/media/:id", handleMedia)
 
 	log.Println("API listening on :" + port)
-	if err := r.Run("0.0.0.0:" + port); err != nil {
+	srv := &http.Server{
+		Addr:              "0.0.0.0:" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 15 * time.Second,
+		// Allow very long reads for large uploads
+		ReadTimeout:       2 * time.Hour,
+		// Writes are small for API responses; keep generous for HLS proxying
+		WriteTimeout:      2 * time.Hour,
+		IdleTimeout:       2 * time.Minute,
+	}
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }
