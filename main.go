@@ -492,8 +492,14 @@ func main() {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
-	// Allow large uploads (default is 32 MiB). Set to 512 MiB.
-	r.MaxMultipartMemory = 512 << 20
+    // Allow large uploads: configurable via env UPLOAD_MAX_MEMORY_MB (default 8192 MB = 8 GiB)
+    maxMemMB := int64(8192)
+    if v := os.Getenv("UPLOAD_MAX_MEMORY_MB"); v != "" {
+        if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+            maxMemMB = n
+        }
+    }
+    r.MaxMultipartMemory = maxMemMB << 20
 
 	// Static serve uploaded files and HLS outputs
 	ensureDir("./uploads")
